@@ -3117,6 +3117,10 @@ description = "Demonstrates volumetric fog and lighting"
 category = "3D Rendering"
 wasm = true
 
+[[example]]
+name = "custom_material_experiments"
+path = "examples/scratchspace/custom_material_experiments.rs"
+
 [profile.wasm-release]
 inherits = "release"
 opt-level = "z"
