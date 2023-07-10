@@ -14,6 +14,7 @@ use bevy::{
     transform::components::Transform,
     DefaultPlugins,
 };
+//use bevy_internal::sprite::SpriteBundle;
 
 #[derive(AsBindGroup, TypeUuid, TypePath, Debug, Clone)]
 #[uuid = "f690fdae-d598-45ab-8225-97e2a3f056e0"]
@@ -38,10 +39,11 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<CustomMaterial>>,
 ) {
+    //SpriteBundle
     commands.spawn(Camera2dBundle::default());
     commands.spawn(MaterialMesh2dBundle {
         mesh: meshes.add(Mesh::from(shape::Quad::default())).into(),
-        transform: Transform::default().with_scale(Vec3::splat(512.)),
+        transform: Transform::default().with_scale(Vec3::splat(1024.)),
         material: materials.add(CustomMaterial { color: Color::RED }),
         ..Default::default()
     });
