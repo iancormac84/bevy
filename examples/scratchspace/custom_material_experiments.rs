@@ -2,7 +2,10 @@ use bevy::{
     app::{App, Startup},
     asset::Assets,
     core_pipeline::core_2d::Camera2dBundle,
-    ecs::system::{Commands, ResMut},
+    ecs::{
+        query::With,
+        system::{Commands, Query, ResMut},
+    },
     math::Vec3,
     reflect::{TypePath, TypeUuid},
     render::{
@@ -12,6 +15,7 @@ use bevy::{
     },
     sprite::{Material2d, Material2dPlugin, MaterialMesh2dBundle},
     transform::components::Transform,
+    window::{PrimaryWindow, Window},
     DefaultPlugins,
 };
 //use bevy_internal::sprite::SpriteBundle;
@@ -38,15 +42,22 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<CustomMaterial>>,
+    primary_window: Query<&mut Window, With<PrimaryWindow>>,
 ) {
     //SpriteBundle
     commands.spawn(Camera2dBundle::default());
-    commands.spawn(MaterialMesh2dBundle {
-        mesh: meshes.add(Mesh::from(shape::Quad::default())).into(),
-        transform: Transform::default().with_scale(Vec3::splat(1024.)),
-        material: materials.add(CustomMaterial { color: Color::RED }),
-        ..Default::default()
-    });
+    if let Ok(window) = primary_window.get_single() {
+        commands.spawn(MaterialMesh2dBundle {
+            mesh: meshes.add(Mesh::from(shape::Quad::default())).into(),
+            transform: Transform::default().with_scale(Vec3::new(
+                window.width(),
+                window.height(),
+                1024.,
+            )),
+            material: materials.add(CustomMaterial { color: Color::RED }),
+            ..Default::default()
+        });
+    }
 }
 
 fn main() {
