@@ -1,6 +1,6 @@
 use bevy::{
     app::{App, Startup},
-    asset::Assets,
+    asset::{Asset, Assets},
     core_pipeline::core_2d::Camera2dBundle,
     ecs::{
         query::With,
@@ -20,7 +20,7 @@ use bevy::{
 };
 //use bevy_internal::sprite::SpriteBundle;
 
-#[derive(AsBindGroup, TypeUuid, TypePath, Debug, Clone)]
+#[derive(Asset, AsBindGroup, TypeUuid, TypePath, Debug, Clone)]
 #[uuid = "f690fdae-d598-45ab-8225-97e2a3f056e0"]
 pub struct CustomMaterial {
     // Uniform bindings must implement `ShaderType`, which will be used to convert the value to
