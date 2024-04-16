@@ -1,6 +1,5 @@
-#import bevy_sprite::mesh2d_view_bindings view
-#import bevy_sprite::mesh2d_view_bindings globals
-#import bevy_sprite::mesh2d_vertex_output MeshVertexOutput
+#import bevy_sprite::mesh2d_view_bindings::{globals, view}
+#import bevy_sprite::mesh2d_vertex_output::VertexOutput
 
 struct CustomMaterial {
     color: vec4<f32>,
@@ -20,7 +19,7 @@ fn palette(t: f32) -> vec3<f32> {
 
 @fragment
 fn fragment(
-    mesh: MeshVertexOutput,
+    mesh: VertexOutput,
 ) -> @location(0) vec4<f32> {
     var uv = (mesh.position.xy * 2.0 - view.viewport.zw) / view.viewport.w; 
     var uv0 = uv;

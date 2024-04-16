@@ -1,16 +1,18 @@
+//! A shader and a custom material that uses it to make a pretty animated effect.
+
 use bevy::{
     app::{App, Startup},
     asset::{Asset, Assets},
+    color::LinearRgba,
     core_pipeline::core_2d::Camera2dBundle,
     ecs::{
         query::With,
         system::{Commands, Query, ResMut},
     },
-    math::Vec3,
-    reflect::{TypePath, TypeUuid},
+    math::{primitives::Rectangle, Vec3},
+    reflect::TypePath,
     render::{
-        color::Color,
-        mesh::{shape, Mesh},
+        mesh::Mesh,
         render_resource::{AsBindGroup, ShaderRef},
     },
     sprite::{Material2d, Material2dPlugin, MaterialMesh2dBundle},
@@ -18,15 +20,14 @@ use bevy::{
     window::{PrimaryWindow, Window},
     DefaultPlugins,
 };
-//use bevy_internal::sprite::SpriteBundle;
 
-#[derive(Asset, AsBindGroup, TypeUuid, TypePath, Debug, Clone)]
-#[uuid = "f690fdae-d598-45ab-8225-97e2a3f056e0"]
-pub struct CustomMaterial {
+// This is the struct that will be passed to your shader
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+struct CustomMaterial {
     // Uniform bindings must implement `ShaderType`, which will be used to convert the value to
     // its shader-compatible equivalent. Most core math types already implement `ShaderType`.
     #[uniform(0)]
-    color: Color,
+    color: LinearRgba,
 }
 
 // All functions on `Material2d` have default impls. You only need to implement the
@@ -48,13 +49,13 @@ fn setup(
     commands.spawn(Camera2dBundle::default());
     if let Ok(window) = primary_window.get_single() {
         commands.spawn(MaterialMesh2dBundle {
-            mesh: meshes.add(Mesh::from(shape::Quad::default())).into(),
+            mesh: meshes.add(Mesh::from(Rectangle::default())).into(),
             transform: Transform::default().with_scale(Vec3::new(
                 window.width(),
                 window.height(),
                 1024.,
             )),
-            material: materials.add(CustomMaterial { color: Color::RED }),
+            material: materials.add(CustomMaterial { color: LinearRgba::RED }),
             ..Default::default()
         });
     }
