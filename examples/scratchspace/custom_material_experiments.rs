@@ -1,25 +1,14 @@
 //! A shader and a custom material that uses it to make a pretty animated effect.
 
 use bevy::{
-    app::{App, Startup},
-    asset::{Asset, Assets},
-    color::LinearRgba,
-    core_pipeline::core_2d::Camera2dBundle,
-    ecs::{
-        query::With,
-        system::{Commands, Query, ResMut},
-    },
-    math::{primitives::Rectangle, Vec3},
-    reflect::TypePath,
-    render::{
+    app::{App, Startup}, asset::{Asset, Assets}, color::LinearRgba, core_pipeline::core_2d::Camera2d, ecs::{
+        system::{Commands, ResMut},
+    }, math::{primitives::Rectangle, Vec3}, mesh::Mesh2d, reflect::TypePath, render::{
         mesh::Mesh,
         render_resource::{AsBindGroup, ShaderRef},
-    },
-    sprite::{Material2d, Material2dPlugin, MaterialMesh2dBundle},
-    transform::components::Transform,
-    window::{PrimaryWindow, Window},
-    DefaultPlugins,
+    }, sprite::{Material2d, Material2dPlugin, MeshMaterial2d}, transform::components::Transform, window::Window, DefaultPlugins
 };
+use bevy_ecs::system::Single;
 
 // This is the struct that will be passed to your shader
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
@@ -43,22 +32,20 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<CustomMaterial>>,
-    primary_window: Query<&mut Window, With<PrimaryWindow>>,
+    window: Single<&mut Window>,
 ) {
     //SpriteBundle
-    commands.spawn(Camera2dBundle::default());
-    if let Ok(window) = primary_window.get_single() {
-        commands.spawn(MaterialMesh2dBundle {
-            mesh: meshes.add(Mesh::from(Rectangle::default())).into(),
-            transform: Transform::default().with_scale(Vec3::new(
-                window.width(),
-                window.height(),
-                1024.,
-            )),
-            material: materials.add(CustomMaterial { color: LinearRgba::RED }),
-            ..Default::default()
-        });
-    }
+    commands.spawn(Camera2d);
+
+    commands.spawn((
+        Mesh2d(meshes.add(Rectangle::default())),
+        Transform::default().with_scale(Vec3::new(
+            window.width(),
+            window.height(),
+            1024.,
+        )),
+        MeshMaterial2d(materials.add(CustomMaterial { color: LinearRgba::RED }))
+    ));
 }
 
 fn main() {

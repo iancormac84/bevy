@@ -1,12 +1,7 @@
 #import bevy_sprite::mesh2d_view_bindings::{globals, view}
 #import bevy_sprite::mesh2d_vertex_output::VertexOutput
 
-struct CustomMaterial {
-    color: vec4<f32>,
-};
-
-@group(1) @binding(0)
-var<uniform> material: CustomMaterial;
+@group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> material: vec4<f32>;
 
 fn palette(t: f32) -> vec3<f32> {
     var a = vec3(0.5, 0.5, 0.5);
