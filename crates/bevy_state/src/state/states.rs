@@ -1,6 +1,6 @@
-use std::fmt::Debug;
+use core::fmt::Debug;
 
-use std::hash::Hash;
+use core::hash::Hash;
 
 /// Types that can define world-wide states in a finite-state machine.
 ///
@@ -21,16 +21,16 @@ use std::hash::Hash;
 ///
 /// ```
 /// use bevy_state::prelude::*;
-/// use bevy_ecs::prelude::IntoSystemConfigs;
-/// use bevy_ecs::system::ResMut;
+/// use bevy_ecs::prelude::IntoScheduleConfigs;
+/// use bevy_ecs::system::{ResMut, ScheduleSystem};
 ///
 ///
 /// #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, States)]
 /// enum GameState {
-///  #[default]
-///   MainMenu,
-///   SettingsMenu,
-///   InGame,
+///     #[default]
+///     MainMenu,
+///     SettingsMenu,
+///     InGame,
 /// }
 ///
 /// fn handle_escape_pressed(mut next_state: ResMut<NextState<GameState>>) {
@@ -46,7 +46,7 @@ use std::hash::Hash;
 ///
 /// # struct AppMock;
 /// # impl AppMock {
-/// #     fn add_systems<S, M>(&mut self, schedule: S, systems: impl IntoSystemConfigs<M>) {}
+/// #     fn add_systems<S, M>(&mut self, schedule: S, systems: impl IntoScheduleConfigs<ScheduleSystem, M>) {}
 /// # }
 /// # struct Update;
 /// # let mut app = AppMock;
@@ -54,9 +54,22 @@ use std::hash::Hash;
 /// app.add_systems(Update, handle_escape_pressed.run_if(in_state(GameState::MainMenu)));
 /// app.add_systems(OnEnter(GameState::SettingsMenu), open_settings_menu);
 /// ```
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` can not be used as a state",
+    label = "invalid state",
+    note = "consider annotating `{Self}` with `#[derive(States)]`"
+)]
 pub trait States: 'static + Send + Sync + Clone + PartialEq + Eq + Hash + Debug {
     /// How many other states this state depends on.
     /// Used to help order transitions and de-duplicate [`ComputedStates`](crate::state::ComputedStates), as well as prevent cyclical
     /// `ComputedState` dependencies.
     const DEPENDENCY_DEPTH: usize = 1;
+
+    /// Should [state scoping](crate::state_scoped) be enabled for this state?
+    /// If set to `true`, the
+    /// [`DespawnOnEnterState`](crate::state_scoped::DespawnOnEnterState) and
+    /// [`DespawnOnExitState`](crate::state_scoped::DespawnOnEnterState)
+    /// components are used to remove entities when entering or exiting the
+    /// state.
+    const SCOPED_ENTITIES_ENABLED: bool = false;
 }

@@ -1,8 +1,12 @@
-use crate::attributes::{impl_custom_attribute_methods, CustomAttributes};
-use crate::{NamedField, UnnamedField};
-use bevy_utils::HashMap;
-use std::slice::Iter;
-use std::sync::Arc;
+use crate::{
+    attributes::{impl_custom_attribute_methods, CustomAttributes},
+    NamedField, UnnamedField,
+};
+use alloc::boxed::Box;
+use bevy_platform::collections::HashMap;
+use bevy_platform::sync::Arc;
+use core::slice::Iter;
+use thiserror::Error;
 
 /// Describes the form of an enum variant.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -33,6 +37,21 @@ pub enum VariantType {
     /// }
     /// ```
     Unit,
+}
+
+/// A [`VariantInfo`]-specific error.
+#[derive(Debug, Error)]
+pub enum VariantInfoError {
+    /// Caused when a variant was expected to be of a certain [type], but was not.
+    ///
+    /// [type]: VariantType
+    #[error("variant type mismatch: expected {expected:?}, received {received:?}")]
+    TypeMismatch {
+        /// Expected variant type.
+        expected: VariantType,
+        /// Received variant type.
+        received: VariantType,
+    },
 }
 
 /// A container for compile-time enum variant info.
@@ -67,6 +86,7 @@ pub enum VariantInfo {
 }
 
 impl VariantInfo {
+    /// The name of the enum variant.
     pub fn name(&self) -> &'static str {
         match self {
             Self::Struct(info) => info.name(),
@@ -85,6 +105,17 @@ impl VariantInfo {
         }
     }
 
+    /// Returns the [type] of this variant.
+    ///
+    /// [type]: VariantType
+    pub fn variant_type(&self) -> VariantType {
+        match self {
+            Self::Struct(_) => VariantType::Struct,
+            Self::Tuple(_) => VariantType::Tuple,
+            Self::Unit(_) => VariantType::Unit,
+        }
+    }
+
     impl_custom_attribute_methods!(
         self,
         match self {
@@ -94,6 +125,29 @@ impl VariantInfo {
         },
         "variant"
     );
+}
+
+macro_rules! impl_cast_method {
+    ($name:ident : $kind:ident => $info:ident) => {
+        #[doc = concat!("Attempts a cast to [`", stringify!($info), "`].")]
+        #[doc = concat!("\n\nReturns an error if `self` is not [`VariantInfo::", stringify!($kind), "`].")]
+        pub fn $name(&self) -> Result<&$info, VariantInfoError> {
+            match self {
+                Self::$kind(info) => Ok(info),
+                _ => Err(VariantInfoError::TypeMismatch {
+                    expected: VariantType::$kind,
+                    received: self.variant_type(),
+                }),
+            }
+        }
+    };
+}
+
+/// Conversion convenience methods for [`VariantInfo`].
+impl VariantInfo {
+    impl_cast_method!(as_struct_variant: Struct => StructVariantInfo);
+    impl_cast_method!(as_tuple_variant: Tuple => TupleVariantInfo);
+    impl_cast_method!(as_unit_variant: Unit => UnitVariantInfo);
 }
 
 /// Type info for struct variants.
@@ -112,7 +166,7 @@ impl StructVariantInfo {
     /// Create a new [`StructVariantInfo`].
     pub fn new(name: &'static str, fields: &[NamedField]) -> Self {
         let field_indices = Self::collect_field_indices(fields);
-        let field_names = fields.iter().map(|field| field.name()).collect();
+        let field_names = fields.iter().map(NamedField::name).collect();
         Self {
             name,
             fields: fields.to_vec().into_boxed_slice(),
@@ -303,4 +357,28 @@ impl UnitVariantInfo {
     }
 
     impl_custom_attribute_methods!(self.custom_attributes, "variant");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Reflect, Typed};
+
+    #[test]
+    fn should_return_error_on_invalid_cast() {
+        #[derive(Reflect)]
+        enum Foo {
+            Bar,
+        }
+
+        let info = Foo::type_info().as_enum().unwrap();
+        let variant = info.variant_at(0).unwrap();
+        assert!(matches!(
+            variant.as_tuple_variant(),
+            Err(VariantInfoError::TypeMismatch {
+                expected: VariantType::Tuple,
+                received: VariantType::Unit
+            })
+        ));
+    }
 }

@@ -1,8 +1,9 @@
 use crate::{
     color_difference::EuclideanDistance, impl_componentwise_vector_space, Alpha, ColorToComponents,
-    Gray, Luminance, Mix, StandardColor,
+    ColorToPacked, Gray, Luminance, Mix, StandardColor,
 };
-use bevy_math::{Vec3, Vec4};
+use bevy_math::{ops, Vec3, Vec4};
+#[cfg(feature = "bevy_reflect")]
 use bevy_reflect::prelude::*;
 use bytemuck::{Pod, Zeroable};
 
@@ -11,11 +12,15 @@ use bytemuck::{Pod, Zeroable};
 /// <div>
 #[doc = include_str!("../docs/diagrams/model_graph.svg")]
 /// </div>
-#[derive(Debug, Clone, Copy, PartialEq, Reflect, Pod, Zeroable)]
-#[reflect(PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Pod, Zeroable)]
 #[cfg_attr(
-    feature = "serialize",
-    derive(serde::Serialize, serde::Deserialize),
+    feature = "bevy_reflect",
+    derive(Reflect),
+    reflect(Clone, PartialEq, Default)
+)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    all(feature = "serialize", feature = "bevy_reflect"),
     reflect(Serialize, Deserialize)
 )]
 #[repr(C)]
@@ -149,24 +154,12 @@ impl LinearRgba {
         }
     }
 
-    /// Converts the color into a [f32; 4] array in RGBA order.
-    ///
-    /// This is useful for passing the color to a shader.
-    pub fn to_f32_array(&self) -> [f32; 4] {
-        [self.red, self.green, self.blue, self.alpha]
-    }
-
     /// Converts this color to a u32.
     ///
     /// Maps the RGBA channels in RGBA order to a little-endian byte array (GPUs are little-endian).
     /// `A` will be the most significant byte and `R` the least significant.
     pub fn as_u32(&self) -> u32 {
-        u32::from_le_bytes([
-            (self.red * 255.0) as u8,
-            (self.green * 255.0) as u8,
-            (self.blue * 255.0) as u8,
-            (self.alpha * 255.0) as u8,
-        ])
+        u32::from_le_bytes(self.to_u8_array())
     }
 }
 
@@ -310,6 +303,25 @@ impl ColorToComponents for LinearRgba {
     }
 }
 
+impl ColorToPacked for LinearRgba {
+    fn to_u8_array(self) -> [u8; 4] {
+        [self.red, self.green, self.blue, self.alpha]
+            .map(|v| ops::round(v.clamp(0.0, 1.0) * 255.0) as u8)
+    }
+
+    fn to_u8_array_no_alpha(self) -> [u8; 3] {
+        [self.red, self.green, self.blue].map(|v| ops::round(v.clamp(0.0, 1.0) * 255.0) as u8)
+    }
+
+    fn from_u8_array(color: [u8; 4]) -> Self {
+        Self::from_f32_array(color.map(|u| u as f32 / 255.0))
+    }
+
+    fn from_u8_array_no_alpha(color: [u8; 3]) -> Self {
+        Self::from_f32_array_no_alpha(color.map(|u| u as f32 / 255.0))
+    }
+}
+
 #[cfg(feature = "wgpu-types")]
 impl From<LinearRgba> for wgpu_types::Color {
     fn from(color: LinearRgba) -> Self {
@@ -324,6 +336,7 @@ impl From<LinearRgba> for wgpu_types::Color {
 
 // [`LinearRgba`] is intended to be used with shaders
 // So it's the only color type that implements [`ShaderType`] to make it easier to use inside shaders
+#[cfg(feature = "encase")]
 impl encase::ShaderType for LinearRgba {
     type ExtraMetadata = ();
 
@@ -345,6 +358,7 @@ impl encase::ShaderType for LinearRgba {
     const UNIFORM_COMPAT_ASSERT: fn() = || {};
 }
 
+#[cfg(feature = "encase")]
 impl encase::private::WriteInto for LinearRgba {
     fn write_into<B: encase::private::BufferMut>(&self, writer: &mut encase::private::Writer<B>) {
         for el in &[self.red, self.green, self.blue, self.alpha] {
@@ -353,6 +367,7 @@ impl encase::private::WriteInto for LinearRgba {
     }
 }
 
+#[cfg(feature = "encase")]
 impl encase::private::ReadFrom for LinearRgba {
     fn read_from<B: encase::private::BufferRef>(
         &mut self,
@@ -372,6 +387,7 @@ impl encase::private::ReadFrom for LinearRgba {
     }
 }
 
+#[cfg(feature = "encase")]
 impl encase::private::CreateFrom for LinearRgba {
     fn create_from<B>(reader: &mut encase::private::Reader<B>) -> Self
     where
@@ -392,6 +408,7 @@ impl encase::private::CreateFrom for LinearRgba {
     }
 }
 
+#[cfg(feature = "encase")]
 impl encase::ShaderSize for LinearRgba {}
 
 #[cfg(test)]
@@ -414,6 +431,34 @@ mod tests {
         let a = LinearRgba::new(0.0, 0.0, 0.0, 1.0);
         let b = LinearRgba::new(1.0, 0.0, 0.0, 1.0);
         assert_eq!(a.distance_squared(&b), 1.0);
+    }
+
+    #[test]
+    fn to_and_from_u8() {
+        // from_u8_array
+        let a = LinearRgba::from_u8_array([255, 0, 0, 255]);
+        let b = LinearRgba::new(1.0, 0.0, 0.0, 1.0);
+        assert_eq!(a, b);
+
+        // from_u8_array_no_alpha
+        let a = LinearRgba::from_u8_array_no_alpha([255, 255, 0]);
+        let b = LinearRgba::rgb(1.0, 1.0, 0.0);
+        assert_eq!(a, b);
+
+        // to_u8_array
+        let a = LinearRgba::new(0.0, 0.0, 1.0, 1.0).to_u8_array();
+        let b = [0, 0, 255, 255];
+        assert_eq!(a, b);
+
+        // to_u8_array_no_alpha
+        let a = LinearRgba::rgb(0.0, 1.0, 1.0).to_u8_array_no_alpha();
+        let b = [0, 255, 255];
+        assert_eq!(a, b);
+
+        // clamping
+        let a = LinearRgba::rgb(0.0, 100.0, -100.0).to_u8_array_no_alpha();
+        let b = [0, 255, 0];
+        assert_eq!(a, b);
     }
 
     #[test]

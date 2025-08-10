@@ -1,4 +1,4 @@
-use std::{iter, marker::PhantomData};
+use core::{iter, marker::PhantomData};
 
 use crate::{
     render_resource::Buffer,
@@ -9,7 +9,7 @@ use encase::{
     internal::{WriteInto, Writer},
     ShaderType,
 };
-use wgpu::{BufferAddress, BufferUsages};
+use wgpu::{BindingResource, BufferAddress, BufferUsages};
 
 use super::GpuArrayBufferable;
 
@@ -29,13 +29,13 @@ use super::GpuArrayBufferable;
 /// from system RAM to VRAM.
 ///
 /// Other options for storing GPU-accessible data are:
-/// * [`StorageBuffer`](crate::render_resource::StorageBuffer)
+/// * [`BufferVec`]
 /// * [`DynamicStorageBuffer`](crate::render_resource::DynamicStorageBuffer)
-/// * [`UniformBuffer`](crate::render_resource::UniformBuffer)
 /// * [`DynamicUniformBuffer`](crate::render_resource::DynamicUniformBuffer)
 /// * [`GpuArrayBuffer`](crate::render_resource::GpuArrayBuffer)
-/// * [`BufferVec`]
+/// * [`StorageBuffer`](crate::render_resource::StorageBuffer)
 /// * [`Texture`](crate::render_resource::Texture)
+/// * [`UniformBuffer`](crate::render_resource::UniformBuffer)
 pub struct RawBufferVec<T: NoUninit> {
     values: Vec<T>,
     buffer: Option<Buffer>,
@@ -47,38 +47,52 @@ pub struct RawBufferVec<T: NoUninit> {
 }
 
 impl<T: NoUninit> RawBufferVec<T> {
+    /// Creates a new [`RawBufferVec`] with the given [`BufferUsages`].
     pub const fn new(buffer_usage: BufferUsages) -> Self {
         Self {
             values: Vec::new(),
             buffer: None,
             capacity: 0,
-            item_size: std::mem::size_of::<T>(),
+            item_size: size_of::<T>(),
             buffer_usage,
             label: None,
             changed: false,
         }
     }
 
+    /// Returns a handle to the buffer, if the data has been uploaded.
     #[inline]
     pub fn buffer(&self) -> Option<&Buffer> {
         self.buffer.as_ref()
     }
 
+    /// Returns the binding for the buffer if the data has been uploaded.
+    #[inline]
+    pub fn binding(&self) -> Option<BindingResource<'_>> {
+        Some(BindingResource::Buffer(
+            self.buffer()?.as_entire_buffer_binding(),
+        ))
+    }
+
+    /// Returns the amount of space that the GPU will use before reallocating.
     #[inline]
     pub fn capacity(&self) -> usize {
         self.capacity
     }
 
+    /// Returns the number of items that have been pushed to this buffer.
     #[inline]
     pub fn len(&self) -> usize {
         self.values.len()
     }
 
+    /// Returns true if the buffer is empty.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.values.is_empty()
     }
 
+    /// Adds a new value and returns its index.
     pub fn push(&mut self, value: T) -> usize {
         let index = self.values.len();
         self.values.push(value);
@@ -89,6 +103,29 @@ impl<T: NoUninit> RawBufferVec<T> {
         self.values.append(&mut other.values);
     }
 
+    /// Returns the value at the given index.
+    pub fn get(&self, index: u32) -> Option<&T> {
+        self.values.get(index as usize)
+    }
+
+    /// Sets the value at the given index.
+    ///
+    /// The index must be less than [`RawBufferVec::len`].
+    pub fn set(&mut self, index: u32, value: T) {
+        self.values[index as usize] = value;
+    }
+
+    /// Preallocates space for `count` elements in the internal CPU-side buffer.
+    ///
+    /// Unlike [`RawBufferVec::reserve`], this doesn't have any effect on the GPU buffer.
+    pub fn reserve_internal(&mut self, count: usize) {
+        self.values.reserve(count);
+    }
+
+    /// Changes the debugging label of the buffer.
+    ///
+    /// The next time the buffer is updated (via [`reserve`](Self::reserve)), Bevy will inform
+    /// the driver of the new label.
     pub fn set_label(&mut self, label: Option<&str>) {
         let label = label.map(str::to_string);
 
@@ -99,12 +136,13 @@ impl<T: NoUninit> RawBufferVec<T> {
         self.label = label;
     }
 
+    /// Returns the label
     pub fn get_label(&self) -> Option<&str> {
         self.label.as_deref()
     }
 
     /// Creates a [`Buffer`] on the [`RenderDevice`] with size
-    /// at least `std::mem::size_of::<T>() * capacity`, unless a such a buffer already exists.
+    /// at least `size_of::<T>() * capacity`, unless a such a buffer already exists.
     ///
     /// If a [`Buffer`] exists, but is too small, references to it will be discarded,
     /// and a new [`Buffer`] will be created. Any previously created [`Buffer`]s
@@ -145,12 +183,44 @@ impl<T: NoUninit> RawBufferVec<T> {
         }
     }
 
+    /// Queues writing of data from system RAM to VRAM using the [`RenderDevice`]
+    /// and the provided [`RenderQueue`].
+    ///
+    /// Before queuing the write, a [`reserve`](RawBufferVec::reserve) operation
+    /// is executed.
+    ///
+    /// This will only write the data contained in the given range. It is useful if you only want
+    /// to update a part of the buffer.
+    pub fn write_buffer_range(
+        &mut self,
+        device: &RenderDevice,
+        render_queue: &RenderQueue,
+        range: core::ops::Range<usize>,
+    ) {
+        if self.values.is_empty() {
+            return;
+        }
+        self.reserve(self.values.len(), device);
+        if let Some(buffer) = &self.buffer {
+            // Cast only the bytes we need to write
+            let bytes: &[u8] = must_cast_slice(&self.values[range.start..range.end]);
+            render_queue.write_buffer(buffer, (range.start * self.item_size) as u64, bytes);
+        }
+    }
+
+    /// Reduces the length of the buffer.
     pub fn truncate(&mut self, len: usize) {
         self.values.truncate(len);
     }
 
+    /// Removes all elements from the buffer.
     pub fn clear(&mut self) {
         self.values.clear();
+    }
+
+    /// Removes and returns the last element in the buffer.
+    pub fn pop(&mut self) -> Option<T> {
+        self.values.pop()
     }
 
     pub fn values(&self) -> &Vec<T> {
@@ -159,6 +229,18 @@ impl<T: NoUninit> RawBufferVec<T> {
 
     pub fn values_mut(&mut self) -> &mut Vec<T> {
         &mut self.values
+    }
+}
+
+impl<T> RawBufferVec<T>
+where
+    T: NoUninit + Default,
+{
+    pub fn grow_set(&mut self, index: u32, value: T) {
+        while index as usize + 1 > self.len() {
+            self.values.push(T::default());
+        }
+        self.values[index as usize] = value;
     }
 }
 
@@ -180,7 +262,16 @@ impl<T: NoUninit> Extend<T> for RawBufferVec<T> {
 /// For performance reasons, unlike [`RawBufferVec`], this type doesn't allow
 /// CPU access to the data after it's been added via [`BufferVec::push`]. If you
 /// need CPU access to the data, consider another type, such as
-/// [`StorageBuffer`].
+/// [`StorageBuffer`][super::StorageBuffer].
+///
+/// Other options for storing GPU-accessible data are:
+/// * [`DynamicStorageBuffer`](crate::render_resource::DynamicStorageBuffer)
+/// * [`DynamicUniformBuffer`](crate::render_resource::DynamicUniformBuffer)
+/// * [`GpuArrayBuffer`](crate::render_resource::GpuArrayBuffer)
+/// * [`RawBufferVec`]
+/// * [`StorageBuffer`](crate::render_resource::StorageBuffer)
+/// * [`Texture`](crate::render_resource::Texture)
+/// * [`UniformBuffer`](crate::render_resource::UniformBuffer)
 pub struct BufferVec<T>
 where
     T: ShaderType + WriteInto,
@@ -217,6 +308,14 @@ where
         self.buffer.as_ref()
     }
 
+    /// Returns the binding for the buffer if the data has been uploaded.
+    #[inline]
+    pub fn binding(&self) -> Option<BindingResource<'_>> {
+        Some(BindingResource::Buffer(
+            self.buffer()?.as_entire_buffer_binding(),
+        ))
+    }
+
     /// Returns the amount of space that the GPU will use before reallocating.
     #[inline]
     pub fn capacity(&self) -> usize {
@@ -242,7 +341,7 @@ where
 
         // TODO: Consider using unsafe code to push uninitialized, to prevent
         // the zeroing. It shows up in profiles.
-        self.data.extend(iter::repeat(0).take(element_size));
+        self.data.extend(iter::repeat_n(0, element_size));
 
         // Take a slice of the new data for `write_into` to use. This is
         // important: it hoists the bounds check up here so that the compiler
@@ -255,7 +354,7 @@ where
 
     /// Changes the debugging label of the buffer.
     ///
-    /// The next time the buffer is updated (via [`reserve`]), Bevy will inform
+    /// The next time the buffer is updated (via [`Self::reserve`]), Bevy will inform
     /// the driver of the new label.
     pub fn set_label(&mut self, label: Option<&str>) {
         let label = label.map(str::to_string);
@@ -273,7 +372,7 @@ where
     }
 
     /// Creates a [`Buffer`] on the [`RenderDevice`] with size
-    /// at least `std::mem::size_of::<T>() * capacity`, unless such a buffer already exists.
+    /// at least `size_of::<T>() * capacity`, unless such a buffer already exists.
     ///
     /// If a [`Buffer`] exists, but is too small, references to it will be discarded,
     /// and a new [`Buffer`] will be created. Any previously created [`Buffer`]s
@@ -313,6 +412,31 @@ where
 
         let Some(buffer) = &self.buffer else { return };
         queue.write_buffer(buffer, 0, &self.data);
+    }
+
+    /// Queues writing of data from system RAM to VRAM using the [`RenderDevice`]
+    /// and the provided [`RenderQueue`].
+    ///
+    /// Before queuing the write, a [`reserve`](BufferVec::reserve) operation
+    /// is executed.
+    ///
+    /// This will only write the data contained in the given range. It is useful if you only want
+    /// to update a part of the buffer.
+    pub fn write_buffer_range(
+        &mut self,
+        device: &RenderDevice,
+        render_queue: &RenderQueue,
+        range: core::ops::Range<usize>,
+    ) {
+        if self.data.is_empty() {
+            return;
+        }
+        let item_size = u64::from(T::min_size()) as usize;
+        self.reserve(self.data.len() / item_size, device);
+        if let Some(buffer) = &self.buffer {
+            let bytes = &self.data[range.start..range.end];
+            render_queue.write_buffer(buffer, (range.start * item_size) as u64, bytes);
+        }
     }
 
     /// Reduces the length of the buffer.
@@ -358,7 +482,7 @@ where
             len: 0,
             buffer: None,
             capacity: 0,
-            item_size: std::mem::size_of::<T>(),
+            item_size: size_of::<T>(),
             buffer_usage,
             label: None,
             label_changed: false,
@@ -372,10 +496,24 @@ where
         self.buffer.as_ref()
     }
 
+    /// Returns the binding for the buffer if the data has been uploaded.
+    #[inline]
+    pub fn binding(&self) -> Option<BindingResource<'_>> {
+        Some(BindingResource::Buffer(
+            self.buffer()?.as_entire_buffer_binding(),
+        ))
+    }
+
     /// Reserves space for one more element in the buffer and returns its index.
     pub fn add(&mut self) -> usize {
+        self.add_multiple(1)
+    }
+
+    /// Reserves space for the given number of elements in the buffer and
+    /// returns the index of the first one.
+    pub fn add_multiple(&mut self, count: usize) -> usize {
         let index = self.len;
-        self.len += 1;
+        self.len += count;
         index
     }
 
@@ -407,7 +545,7 @@ where
         let size = self.item_size * capacity;
         self.buffer = Some(device.create_buffer(&wgpu::BufferDescriptor {
             label: self.label.as_deref(),
-            size: size as wgpu::BufferAddress,
+            size: size as BufferAddress,
             usage: BufferUsages::COPY_DST | self.buffer_usage,
             mapped_at_creation: false,
         }));
