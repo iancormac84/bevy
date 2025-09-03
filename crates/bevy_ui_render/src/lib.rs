@@ -419,12 +419,12 @@ impl RenderGraphNode for RunUiSubgraphOnUiViewNode {
         let Some(mut render_views) = world.try_query::<&UiCameraView>() else {
             return Ok(());
         };
-        let Ok(default_camera_view) = render_views.get(world, graph.view_entity()) else {
+        let Ok(ui_camera_view) = render_views.get(world, graph.view_entity()) else {
             return Ok(());
         };
 
         // Run the subgraph on the UI view.
-        graph.run_sub_graph(SubGraphUi, vec![], Some(default_camera_view.0))?;
+        graph.run_sub_graph(SubGraphUi, vec![], Some(ui_camera_view.0))?;
         Ok(())
     }
 }
@@ -973,7 +973,7 @@ pub fn extract_text_sections(
                     .get(
                         computed_block
                             .entities()
-                            .get(*span_index)
+                            .get(*span_index + 1)
                             .map(|t| t.entity)
                             .unwrap_or(Entity::PLACEHOLDER),
                     )
