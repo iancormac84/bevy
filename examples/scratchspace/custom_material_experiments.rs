@@ -1,14 +1,22 @@
 //! A shader and a custom material that uses it to make a pretty animated effect.
 
 use bevy::{
-    app::{App, Startup}, asset::{Asset, Assets}, color::LinearRgba, core_pipeline::core_2d::Camera2d, ecs::{
-        system::{Commands, ResMut},
-    }, math::{primitives::Rectangle, Vec3}, mesh::Mesh2d, reflect::TypePath, render::{
-        mesh::Mesh,
-        render_resource::{AsBindGroup, ShaderRef},
-    }, sprite::{Material2d, Material2dPlugin, MeshMaterial2d}, transform::components::Transform, window::Window, DefaultPlugins
+    app::{App, Startup},
+    asset::{Asset, Assets},
+    camera::Camera2d,
+    color::LinearRgba,
+    ecs::system::{Commands, ResMut, Single},
+    math::{primitives::Rectangle, Vec3},
+    mesh::Mesh,
+    mesh::Mesh2d,
+    reflect::TypePath,
+    render::render_resource::AsBindGroup,
+    shader::ShaderRef,
+    sprite_render::{Material2d, Material2dPlugin, MeshMaterial2d},
+    transform::components::Transform,
+    window::Window,
+    DefaultPlugins,
 };
-use bevy_ecs::system::Single;
 
 // This is the struct that will be passed to your shader
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
@@ -39,12 +47,10 @@ fn setup(
 
     commands.spawn((
         Mesh2d(meshes.add(Rectangle::default())),
-        Transform::default().with_scale(Vec3::new(
-            window.width(),
-            window.height(),
-            1024.,
-        )),
-        MeshMaterial2d(materials.add(CustomMaterial { color: LinearRgba::RED }))
+        Transform::default().with_scale(Vec3::new(window.width(), window.height(), 1024.)),
+        MeshMaterial2d(materials.add(CustomMaterial {
+            color: LinearRgba::RED,
+        })),
     ));
 }
 
