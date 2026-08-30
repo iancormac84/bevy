@@ -5725,3 +5725,11 @@ name = "GPU Component Array Buffer"
 description = "Shows how to expose per-mesh-instance data to the GPU"
 category = "Shaders"
 wasm = true
+
+[[example]]
+name = "kaleidoscope2d"
+path = "examples/scratchspace/kaleidoscope2d.rs"
+
+[[example]]
+name = "kaleidoscope3d"
+path = "examples/scratchspace/kaleidoscope3d.rs"

@@ -1,0 +1,65 @@
+//! A shader and a custom material that uses it to make a pretty animated effect.
+
+use bevy::{
+    app::{App, Startup},
+    asset::{Asset, Assets},
+    camera::Camera2d,
+    color::LinearRgba,
+    ecs::system::{Commands, ResMut, Single},
+    math::{primitives::Rectangle, Vec3},
+    mesh::Mesh,
+    mesh::Mesh2d,
+    reflect::TypePath,
+    render::render_resource::AsBindGroup,
+    shader::ShaderRef,
+    sprite_render::{Material2d, Material2dPlugin, MeshMaterial2d},
+    transform::components::Transform,
+    window::Window,
+    DefaultPlugins,
+};
+
+// This is the struct that will be passed to your shader
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+struct CustomMaterial {
+    // Uniform bindings must implement `ShaderType`, which will be used to convert the value to
+    // its shader-compatible equivalent. Most core math types already implement `ShaderType`.
+    #[uniform(0)]
+    color: LinearRgba,
+}
+
+// All functions on `Material2d` have default impls. You only need to implement the
+// functions that are relevant for your material.
+impl Material2d for CustomMaterial {
+    fn fragment_shader() -> ShaderRef {
+        "shaders/kaleidoscope2d.wesl".into()
+    }
+}
+
+// Spawn an entity using `CustomMaterial`.
+fn setup(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<CustomMaterial>>,
+    window: Single<&mut Window>,
+) {
+    //SpriteBundle
+    commands.spawn(Camera2d);
+
+    commands.spawn((
+        Mesh2d(meshes.add(Rectangle::default())),
+        Transform::default().with_scale(Vec3::new(window.width(), window.height(), 1024.)),
+        MeshMaterial2d(materials.add(CustomMaterial {
+            color: LinearRgba::RED,
+        })),
+    ));
+}
+
+fn main() {
+    App::new()
+        .add_plugins((
+            DefaultPlugins,
+            Material2dPlugin::<CustomMaterial>::default(),
+        ))
+        .add_systems(Startup, setup)
+        .run();
+}
